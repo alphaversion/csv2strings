@@ -32,6 +32,9 @@ class Process {
         let keyId = csv.headers[0]
         
         for header in csv.headers[1..<csv.headers.count] {
+            guard !header.isEmpty else {
+                continue
+            }
             print("header \(header)")
   
             var destIOS = [String]()
@@ -64,7 +67,8 @@ class Process {
                 destIOS.append("\"\(id)\" = \"\(value)\";")
                 
                 if value.contains("%") {
-                    destAndroid.append("    <string name=\"\(id)\" formatted=\"true\">\(value)</string>")
+                    let v = value.replacingOccurrences(of: "%@", with: "%s")
+                    destAndroid.append("    <string name=\"\(id)\" formatted=\"true\">\(v)</string>")
                 } else {
                     destAndroid.append("    <string name=\"\(id)\">\(value)</string>")
                 }
@@ -86,7 +90,7 @@ class Process {
         
         let fileName: String
         if os == "android" {
-            fileName = "string.xml"
+            fileName = "strings.xml"
         } else {
             fileName = "Localizable.strings"
         }
