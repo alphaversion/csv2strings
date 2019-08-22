@@ -59,18 +59,25 @@ class Process {
                 
                 let value: String
                 if let str = row[header] {
-                    value = str.replacingOccurrences(of: "\"", with: "")
+                    value = str.replacingOccurrences(of: "\"", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
                 } else {
-                    value = "{{Undefined String: \(id)}}"
+                    value = "{{Undefined: \(id)}}"
                 }
                 
-                destIOS.append("\"\(id)\" = \"\(value)\";")
+                var iosValue = value.replacingOccurrences(of: "&amp;", with: "&")
+                destIOS.append("\"\(id)\" = \"\(iosValue)\";")
                 
                 if value.contains("%") {
-                    let v = value.replacingOccurrences(of: "%@", with: "%s")
+                    var v = value.replacingOccurrences(of: "%@", with: "%s")
+                    v = v.replacingOccurrences(of: "%1$@", with: "%1$s")
+                    v = v.replacingOccurrences(of: "%2$@", with: "%2$s")
+                    v = v.replacingOccurrences(of: "%3$@", with: "%3$s")
+                    v = v.replacingOccurrences(of: "%4$@", with: "%4$s")
+                    v = v.replacingOccurrences(of: "'", with: "\\&apos;")
                     destAndroid.append("    <string name=\"\(id)\" formatted=\"true\">\(v)</string>")
                 } else {
-                    destAndroid.append("    <string name=\"\(id)\">\(value)</string>")
+                    var v = value.replacingOccurrences(of: "'", with: "\\&apos;")
+                    destAndroid.append("    <string name=\"\(id)\">\(v)</string>")
                 }
             })
             destAndroid.append("</resources>")
