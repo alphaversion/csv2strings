@@ -9,9 +9,9 @@
 import Foundation
 
 extension String {
-    
+
     func append(pathComponent str: String) -> String {
         return (self as NSString).appendingPathComponent(str)
     }
-    
+
 }

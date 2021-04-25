@@ -21,8 +21,8 @@ if arguments.count < 2 {
 let inputPath: String
 let outputDir: String
 if DEBUG {
-    inputPath = "/Users/ch3cooh/strings.csv"
-    outputDir = "/Users/ch3cooh/lang"
+    inputPath = "/Users/ch3cooh/csv2strings/app.csv"
+    outputDir = "/Users/ch3cooh/csv2strings/lang"
 } else {
     inputPath = arguments[0]
     outputDir = arguments[1]
