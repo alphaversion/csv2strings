@@ -32,7 +32,7 @@ def build_ios(header, keyed_rows, key_id):
             continue
 
         value = cell_value(row, header, entry_id)
-        lines.append('"{}" = "{}";'.format(entry_id, value.replace("&amp;", "&")))
+        lines.append('"{}" = "{}";'.format(entry_id, unescape_entities(value)))
 
     return "\n".join(lines)
 
@@ -50,7 +50,7 @@ def build_android(header, keyed_rows, key_id):
             lines.append("\n    <!-- {} -->".format(section_name(entry_id)))
             continue
 
-        value = cell_value(row, header, entry_id)
+        value = unescape_entities(cell_value(row, header, entry_id), xml=True)
 
         # 書式指定子を含む場合は iOS 形式 (%@) を Android 形式 (%s) に置換する
         if "%" in value:
@@ -71,6 +71,24 @@ def build_android(header, keyed_rows, key_id):
 
 def section_name(entry_id):
     return entry_id.replace("# ", "").replace("#", "")
+
+
+def unescape_entities(value, xml=False):
+    """スプレッドシート由来の HTML エンティティを実体に戻す。
+
+    GOOGLETRANSLATE の結果などに &nbsp; や &amp; がそのまま混ざることがあり、
+    デコードしないと画面にエンティティの文字列がそのまま表示されてしまう。
+    &nbsp; は U+00A0 ではなく半角スペースに落とす。表示上の差は無い一方、
+    U+00A0 だと折り返しや trim の挙動が変わるため、従来の bin/csv2strings の
+    出力に合わせている。&apos; は Android 側でエスケープし直すため変換しない。
+
+    xml=True (strings.xml 向け) では &amp; を変換しない。XML では &amp; が
+    アンパサンドの正しい表記であり、& に戻すとパースできない XML になる。
+    """
+    value = value.replace("&nbsp;", " ")
+    if not xml:
+        value = value.replace("&amp;", "&")
+    return value
 
 
 def cell_value(row, header, entry_id):
