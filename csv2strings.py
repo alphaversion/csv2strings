@@ -13,6 +13,7 @@ CSV の 1 列目は文字列 ID。2 列目以降は各言語の列で、ヘッ�
 import argparse
 import csv
 import os
+import re
 import sys
 
 
@@ -31,10 +32,18 @@ def build_ios(header, keyed_rows, key_id):
             lines.append("\n// MARK: - {}".format(section_name(entry_id)))
             continue
 
-        value = cell_value(row, header, entry_id)
-        lines.append('"{}" = "{}";'.format(entry_id, unescape_entities(value)))
+        value = unescape_entities(cell_value(row, header, entry_id))
+        lines.append('"{}" = "{}";'.format(entry_id, escape_ios(value)))
 
     return "\n".join(lines)
+
+
+def escape_ios(value):
+    """Localizable.strings の "key" = "value"; 形式に収まるようエスケープする。
+
+    裸の " が入ると構文が壊れるため \\" に、その前提となる \\ 自体も \\\\ にする。
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def build_android(header, keyed_rows, key_id):
@@ -52,21 +61,57 @@ def build_android(header, keyed_rows, key_id):
 
         value = unescape_entities(cell_value(row, header, entry_id), xml=True)
 
-        # 書式指定子を含む場合は iOS 形式 (%@) を Android 形式 (%s) に置換する
-        if "%" in value:
-            value = value.replace("%@", "%s")
-            for index in range(1, 5):
-                value = value.replace("%{}$@".format(index), "%{}$s".format(index))
-            value = value.replace("'", "\\&apos;")
+        # iOS 形式の書式指定子 (%@) を Android 形式 (%s) に置換する
+        value = FORMAT_SPECIFIER_OBJC.sub(lambda m: m.group(0)[:-1] + "s", value)
+
+        value = escape_android(value)
+
+        if FORMAT_SPECIFIER.search(value):
             lines.append(
                 '    <string name="{}" formatted="true">{}</string>'.format(entry_id, value)
             )
         else:
-            value = value.replace("'", "\\&apos;")
             lines.append('    <string name="{}">{}</string>'.format(entry_id, value))
 
     lines.append("</resources>")
     return "\n".join(lines)
+
+
+# %@ / %1$@ など iOS 形式の書式指定子。末尾の @ を s に差し替えて Android 形式にする
+FORMAT_SPECIFIER_OBJC = re.compile(r"%(?:\d+\$)?@")
+
+# Android の String.format が解釈する書式指定子。"100%" のような裸の % は含まない。
+# フラグにスペースを含めると "50% off" の "% o" を拾ってしまうため許容しない
+FORMAT_SPECIFIER = re.compile(r"%(?:\d+\$)?[-+#0]*\d*(?:\.\d+)?[sdfeguxo]", re.IGNORECASE)
+
+
+def escape_android(value):
+    """strings.xml のリソース値として安全な形にエスケープする。
+
+    ' と " は Android のリソース解析でエスケープが要る。裸の < > & は XML の
+    エンティティにする。ただし &amp; など元から書かれていたエンティティは
+    unescape_entities(xml=True) が残したものなので、二重エスケープしない。
+    """
+    # 既存のエンティティを退避してから & を変換し、あとで書き戻す
+    kept = []
+
+    def stash(match):
+        kept.append(match.group(0))
+        return "\x00"
+
+    value = ENTITY.sub(stash, value)
+    value = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    value = value.replace("'", "\\&apos;").replace('"', "\\&quot;")
+
+    parts = value.split("\x00")
+    restored = parts[0]
+    for entity, part in zip(kept, parts[1:]):
+        restored += entity + part
+    return restored
+
+
+# 既存の HTML/XML エンティティ (&amp; &#39; など)
+ENTITY = re.compile(r"&(?:#\d+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);")
 
 
 def section_name(entry_id):
@@ -92,11 +137,15 @@ def unescape_entities(value, xml=False):
 
 
 def cell_value(row, header, entry_id):
-    """該当言語の値を取り出す。空欄なら未定義マーカーを返す。"""
+    """該当言語の値を取り出す。空欄なら未定義マーカーを返す。
+
+    引用符の解除は csv モジュールが済ませているので、ここでは何もしない。
+    値に含まれる " は本文の一部として扱い、出力形式ごとにエスケープする。
+    """
     raw = row.get(header, "")
     if not raw.strip():
         return "{{{{Undefined: {}}}}}".format(entry_id)
-    return raw.replace('"', "").strip()
+    return raw.strip()
 
 
 def read_csv(input_path):
@@ -141,8 +190,8 @@ def run(input_path, output_dir):
 
     try:
         headers, keyed_rows = read_csv(input_path)
-    except UnicodeDecodeError:
-        print("Error! Source file can not read.", file=sys.stderr)
+    except (UnicodeDecodeError, csv.Error, OSError) as e:
+        print("Error! Source file can not read. ({})".format(e), file=sys.stderr)
         return 1
 
     if not headers:
@@ -156,12 +205,24 @@ def run(input_path, output_dir):
             continue
         print("header {}".format(header))
 
-        write_output(
-            output_dir, header, build_ios(header, keyed_rows, key_id), "ios", "Localizable.strings"
-        )
-        write_output(
-            output_dir, header, build_android(header, keyed_rows, key_id), "android", "strings.xml"
-        )
+        try:
+            write_output(
+                output_dir,
+                header,
+                build_ios(header, keyed_rows, key_id),
+                "ios",
+                "Localizable.strings",
+            )
+            write_output(
+                output_dir,
+                header,
+                build_android(header, keyed_rows, key_id),
+                "android",
+                "strings.xml",
+            )
+        except OSError as e:
+            print("Error! Can not write output. ({})".format(e), file=sys.stderr)
+            return 1
 
     return 0
 
