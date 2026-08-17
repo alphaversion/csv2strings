@@ -43,28 +43,13 @@ def escape_ios(value):
 
     裸の " が入ると構文が壊れるため \\" にする。
 
-    バックスラッシュは .strings が解釈するエスケープだけ書かれたまま通す。
-    CSV の \\n は改行エスケープとして意図的に書かれているものなので、\\\\n に
-    すると改行されず画面に \\n がそのまま出てしまう。一方それ以外の \\ を
-    そのまま通すと壊れる。C:\\Users\\test は \\U が Unicode エスケープとして
-    解釈されて "C:\\0sers\\test" になり、末尾の \\ は閉じ引用符をエスケープして
-    ファイル全体がパース不能になる。そのため意味を持たない \\ だけ \\\\ にする。
+    バックスラッシュは Swift 版と同じく変換せず、書かれたまま通す。CSV の \\n は
+    .strings の改行エスケープとして意図的に書かれているものなので、\\\\n にすると
+    改行されず画面に \\n がそのまま出てしまう。その代わり C:\\Users のような
+    リテラルのバックスラッシュは .strings のエスケープとして解釈されるため、
+    その用途では CSV 側で \\\\ と書く必要がある。
     """
-    def escape(match):
-        valid, bare_backslash = match.group(1), match.group(2)
-        if valid is not None:
-            return valid  # 有効なエスケープはそのまま通す
-        if bare_backslash is not None:
-            return "\\\\"
-        return '\\"'  # 裸の "
-
-    return IOS_ESCAPE.sub(escape, value)
-
-
-# 1: .strings が解釈する有効なエスケープ (そのまま通す)
-# 2: それ以外の裸の \ (\\ にする)  3: 裸の " (\" にする)
-# 有効なエスケープを先に食わせることで、\n の \ を裸の \ と誤認しないようにする
-IOS_ESCAPE = re.compile(r'(\\(?:[abfnrtv"\'\\]|U[0-9a-fA-F]{4}))|(\\)|(")')
+    return value.replace('"', '\\"')
 
 
 def build_android(header, keyed_rows, key_id):
